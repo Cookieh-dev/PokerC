@@ -2,9 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define RED          "\x1b[31m"
-#define BLACK        "\x1b[30m"
-#define RESET        "\x1b[0m"
+// ASSIGNING VARIABLES
 
 struct Card {
   unsigned char face;
@@ -48,6 +46,8 @@ struct Game {
   int minBet;
 };
 
+// INITING VARIABLES
+
 static const char *faceNames[] = {"Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King", "Ace"};
 static const char *suitNames[] = {"Hearts", "Diamonds", "Clubs", "Spades"};
 static const char *rankNames[] = {"High Card", "One Pair", "Two Pair", "Three of a Kind", "Straight", "Flush", "Full House", "Four of a Kind", "Straight Flush", "Royal Flush"};
@@ -55,16 +55,24 @@ static const char *rankNames[] = {"High Card", "One Pair", "Two Pair", "Three of
 struct Deck deck;
 struct Game game;
 
+// INITING FUNCTIONS
+
 void initGame();
 void initRound();
 int progressRound();
 int progressTurn();
 void determineWinner();
+
+void initDeck();
+void shuffleDeck();
 struct Card getCard();
 struct Rank getHandRank(struct Card hand[], int numCards);
 struct Rank evaluatePlayerHand(const struct Player *player, const struct Dealer *dealer);
+
 void printHand(struct Card hand[], int numCards);
 void clear_terminal();
+
+// MAIN
 
 int main() {
   srand(time(NULL));
@@ -99,12 +107,12 @@ int main() {
         continue;
       }
 
-      clear_terminal();
-
       if (game.turn > 4) {
         determineWinner();
         break;
       }
+
+      clear_terminal();
 
       printf("[Turn %d] Player %d's action. Chips: %d\n", game.turn, currentPlayer->id, currentPlayer->chips);
       printf("Dealer's hand:\n");
@@ -127,10 +135,9 @@ int main() {
 
       if (action == 2) { // Fold
         currentPlayer->hasFolded = 1;
-        clear_terminal();
       } 
       else if (action == 3) { // Bet or Raise
-        
+        currentPlayer->hasBet = 1;
       }
 
       if (progressTurn()) {
@@ -167,12 +174,13 @@ void initGame() {
   game.minBet = 10;
   game.round = 1;
   game.turn = 1;
+
+  initDeck();
 }
 
 void initRound() {
-  struct Deck newDeck = {{0}, 0};
+  shuffleDeck();
   struct Dealer dealer = {{0}, 0};
-  deck = newDeck; // reset the deck for each round
   game.dealer = dealer;
 
   game.dealer.numCardsInHand = 3;
@@ -253,28 +261,38 @@ void determineWinner() {
 
 // DECK RELATED FUNCTIONS
 
-struct Card getCard() { // >>> NEEDS OPTIMIZATION
-  int i;
-  int isUnique;
-  struct Card cardToDeal;
-  
-  while(1){
-      cardToDeal.face = rand()%13;
-      cardToDeal.suit = rand()%4;
-      isUnique = 1;
-      
-      for(i = 0; i < deck.numCardsDealt; i++){ // cant use continue because its inside of a for loop
-          if(deck.dealtCards[i].face == cardToDeal.face && deck.dealtCards[i].suit == cardToDeal.suit) {
-              isUnique = 0;
-          }
-      }
-      
-      if(isUnique){
-          deck.dealtCards[deck.numCardsDealt] = cardToDeal;
-          deck.numCardsDealt++;
-          return cardToDeal;
-      }
+void initDeck() {
+  int i = 0;
+
+  for (int suit = 0; suit < 4; suit++) {
+    for (int face = 0; face < 13; face++) {
+      deck.dealtCards[i].face = face;
+      deck.dealtCards[i].suit = suit;
+      i++;
+    }
   }
+
+  deck.numCardsDealt = 0;
+}
+
+void shuffleDeck() {
+  for (int i = 51; i > 0; i--) {
+    int j = rand() % (i + 1);
+
+    struct Card temp = deck.dealtCards[i];
+    deck.dealtCards[i] = deck.dealtCards[j];
+    deck.dealtCards[j] = temp;
+  }
+
+  deck.numCardsDealt = 0;
+}
+
+struct Card getCard() {
+  if (deck.numCardsDealt >= 52) {
+    fprintf(stderr, "Deck is empty\n");
+    exit(EXIT_FAILURE);
+  }
+  return deck.dealtCards[deck.numCardsDealt++];
 }
 
 struct Rank getHandRank(struct Card hand[], int numCards) {
@@ -477,6 +495,10 @@ struct Rank evaluatePlayerHand(const struct Player *player, const struct Dealer 
 // UTIL
 
 void printHand(struct Card hand[], int numCards) {
+  const char *RED = "\x1b[31m";
+  const char *BLACK = "\x1b[90m";
+  const char *RESET = "\x1b[0m";
+
   for (int i = 0; i < numCards; i++) {
     if (hand[i].suit == 0 || hand[i].suit == 1) {
       printf(RED);
