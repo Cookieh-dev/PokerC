@@ -34,19 +34,23 @@ struct Dealer { // sim eu sei que isso é so mais um jogador mas fica mais bonit
   int numCardsInHand;
 };
 
+
 struct Game {
-  struct Player players[4];
+  struct Player players[5];
   struct Dealer dealer;
   int round;
   int turn;
   int numPlayers;
-  int activePlayers;
   int currentPlayer;
   int pot;
   int minBet;
 };
 
 // INITING VARIABLES
+
+static const int MAX_PLAYERS = 5; // Do not go above 5 players
+static const int MIN_PLAYERS = 2; // Do not go below 2 players
+static const int STARTING_CHIPS = 20;
 
 static const char *faceNames[] = {"Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King", "Ace"};
 static const char *suitNames[] = {"Hearts", "Diamonds", "Clubs", "Spades"};
@@ -82,7 +86,9 @@ int main() {
   initGame();
 
   while (1) { // Rounds
+
     initRound();
+
     while (1) { // Turn
       clear_terminal();
       struct Player *currentPlayer = &game.players[game.currentPlayer]; // utility variable
@@ -101,7 +107,7 @@ int main() {
             printf("> Player %d folded. \n", game.players[i].id);
           }
         }
-        currentPlayer->chips += game.pot;
+        printf("\n");
         break;
       }
       
@@ -125,8 +131,13 @@ int main() {
         continue;
       }
 
+      if (currentPlayer->hasBet) { // Skip players who have already bet or raised
+        progressTurn();
+        continue;
+      }
+
       // PLAYER ACTION + HUD
-      playerConfirmation();
+      // playerConfirmation();
       int action = playerAction();
 
       if (action == 2) { // Fold
@@ -134,6 +145,7 @@ int main() {
       } 
       else if (action == 3) { // Bet or Raise
         currentPlayer->hasBet = 1;
+        currentPlayer = 0;
       }
 
       // TURN END CHECKS
@@ -162,14 +174,18 @@ int main() {
 // GAME LOGIC FUNCTIONS
 
 void initGame() {
-  printf("Insert the number of players (2-4): ");
-  if (scanf("%d", &game.numPlayers) != 1 || game.numPlayers < 2 || game.numPlayers > 4) {
-    printf("Invalid number of players. Please enter a number between 2 and 4.\n");
+  printf("Insert the number of players (%d-%d): ", MIN_PLAYERS, MAX_PLAYERS);
+  if (scanf("%d", &game.numPlayers) != 1 || game.numPlayers < MIN_PLAYERS || game.numPlayers > MAX_PLAYERS) {
+    printf("Invalid number of players. Please enter a number between %d and %d.\n", MIN_PLAYERS, MAX_PLAYERS);
+    exit(1);
+  }
+  printf("Insert the minimum bet: (Maximum %d): ", STARTING_CHIPS);
+  if (scanf("%d", &game.minBet) != 1 || game.minBet < 1 || game.minBet > STARTING_CHIPS) {
+    printf("Invalid minimum bet. Please enter a number between 1 and %d.\n", STARTING_CHIPS);
     exit(1);
   }
   game.currentPlayer = 0;
   game.pot = 0;
-  game.minBet = 10;
   game.round = 1;
   game.turn = 1;
 
@@ -178,7 +194,7 @@ void initGame() {
 
 void initRound() {
   shuffleDeck();
-  struct Dealer dealer = {{0}, 0};
+  struct Dealer dealer = {0};
   game.dealer = dealer;
 
   game.dealer.numCardsInHand = 3;
@@ -188,7 +204,7 @@ void initRound() {
 
   for (int i = 0; i < game.numPlayers; i++) {
     game.players[i].id = i + 1;
-    game.players[i].chips = 20; // starting chips
+    game.players[i].chips = STARTING_CHIPS; // starting chips
     for (int j = 0; j < 2; j++)
       game.players[i].hand[j] = getCard();
     game.players[i].numCardsInHand = 2;
@@ -201,16 +217,92 @@ void initRound() {
 }
 
 int progressRound() {
-  printf("Round %d ended. Pot: %d\n", game.round , game.pot);
-  game.round++;
-  printf("Do you want to play another round? (1 for Yes, 0 for No): ");
-  int playAgain;
-  if (scanf("%d", &playAgain) != 1 || playAgain < 0 || playAgain > 1) {
-    printf("Invalid input. Please enter 1 for Yes or 0 for No.\n");
-    return 1;
+  printf("Round %d ended.\n", game.round);
+
+  // CHECK IF PLAYERS WANT TO CONTINUE
+  if (game.numPlayers >= MAX_PLAYERS) {
+    printf("Do you want to continue playing? (1 for Yes, 2 for No, 4 to Remove a player): ");
+  } else if (game.numPlayers <= MIN_PLAYERS) {
+    printf("Do you want to continue playing? (1 for Yes, 2 for No, 3 to Add another player): ");
+  } else if (game.numPlayers > MIN_PLAYERS && game.numPlayers < MAX_PLAYERS) {
+    printf("Do you want to continue playing? (1 for Yes, 2 for No, 3 to Add another player, 4 to Remove a player): ");
   }
-  
-  return playAgain;
+
+  int choice;
+  while (scanf("%d", &choice) != 1 || choice < 1 || choice > 4 || (choice == 3 && game.numPlayers >= MAX_PLAYERS) || (choice == 4 && game.numPlayers <= MIN_PLAYERS)) {
+    if (game.numPlayers >= MAX_PLAYERS) {
+      printf("Invalid choice. Please enter 1 for Yes or 2 for No.\n");
+    } else if (game.numPlayers <= MIN_PLAYERS) {
+      printf("Invalid choice. Please enter 1 for Yes, 2 for No, or 3 to Add another player.\n");
+    } else {
+      printf("Invalid choice. Please enter 1 for Yes, 2 for No, 3 to Add another player, or 4 to Remove a player.\n");
+    }
+    while (getchar() != '\n'); // Clear input buffer
+  }
+
+  // HANDLE CHOICE
+  if (choice == 2) {
+    return 0;
+  } 
+  else if (choice == 3 && game.numPlayers < MAX_PLAYERS) {
+    if (game.numPlayers >= MAX_PLAYERS) {
+      return 1;
+    }
+    printf("How many players do you want to add? (up to %d): ", MAX_PLAYERS - game.numPlayers);
+    int toAdd;
+    while (scanf("%d", &toAdd) != 1 || toAdd < 1 || game.numPlayers + toAdd > MAX_PLAYERS) {
+      printf("Invalid number of players. Please enter a number between 1 and %d.\n", MAX_PLAYERS - game.numPlayers);
+      while (getchar() != '\n');
+    }
+    game.numPlayers += toAdd;
+
+    clear_terminal();
+    printf("Added %d player(s). Total players: %d\n \n", toAdd, game.numPlayers);
+    return progressRound();
+  }
+  else if (choice == 4 && game.numPlayers > MIN_PLAYERS) {
+    if (game.numPlayers <= MIN_PLAYERS) {
+      return 1;
+    }
+    printf("How many players do you want to remove? (up to %d): ", game.numPlayers - MIN_PLAYERS);
+    int toRemove;
+    while (scanf("%d", &toRemove) != 1 || toRemove < 1 || game.numPlayers - toRemove < MIN_PLAYERS) {
+      printf("Invalid number of players. Please enter a number between 1 and %d.\n", game.numPlayers - MIN_PLAYERS);
+      while (getchar() != '\n');
+    }
+    for (int i = 0; i < toRemove; i++) {
+      printf("Enter the ID of player to remove (1-%d): ", game.numPlayers);
+      int idToRemove;
+      while (scanf("%d", &idToRemove) != 1 || idToRemove < 1 || idToRemove > game.numPlayers) {
+        printf("Invalid player ID. Please enter a number between 1 and %d.\n", game.numPlayers);
+        while (getchar() != '\n');
+      }
+      if (idToRemove == game.numPlayers) {
+        game.numPlayers--;
+        printf("Removed Player %d.\n", idToRemove);
+      } 
+      else {
+        for (int j = idToRemove - 1; j < game.numPlayers - 1; j++) {
+          printf("> Player %d is now Player %d\n",j + 2, j + 1);
+          game.players[j] = game.players[j + 1];
+          game.players[j].id = j + 1; // Update player ID
+        }
+        game.numPlayers--;
+      }
+    }
+    char buffer[20];
+
+    printf("Confirm you understand these changes (Any input): ");
+    scanf("%s", buffer);
+    clear_terminal();
+    printf("Removed %d player(s). Total players: %d\n \n", toRemove, game.numPlayers);
+    return progressRound();
+  }
+
+  // PROGRESS ROUND
+  game.round++;
+
+  return 1;
 }
 
 int progressTurn() {
