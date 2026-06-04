@@ -61,7 +61,7 @@ void initGame();
 void initRound();
 int progressRound();
 int progressTurn();
-void determineWinner();
+int determineWinner();
 
 void initDeck();
 void shuffleDeck();
@@ -69,6 +69,8 @@ struct Card getCard();
 struct Rank getHandRank(struct Card hand[], int numCards);
 struct Rank evaluatePlayerHand(const struct Player *player, const struct Dealer *dealer);
 
+int playerConfirmation();
+int playerAction();
 void printHand(struct Card hand[], int numCards);
 void clear_terminal();
 
@@ -82,17 +84,18 @@ int main() {
   while (1) { // Rounds
     initRound();
     while (1) { // Turn
-      struct Player *currentPlayer = &game.players[game.currentPlayer];
-      
-      game.activePlayers = 0;
+      clear_terminal();
+      struct Player *currentPlayer = &game.players[game.currentPlayer]; // utility variable
 
+      // TURN START CHECKS
+
+      int activePlayers = 0; // Active player check
       for (int i = 0; i < game.numPlayers; i++) {
         if (!game.players[i].hasFolded) {
-          game.activePlayers++;
+          activePlayers++;
         }
       }
-
-      if (game.activePlayers == 1) {
+      if (activePlayers == 1) {
         for (int i = 0; i < game.numPlayers; i++) {
           if (game.players[i].hasFolded) {
             printf("> Player %d folded. \n", game.players[i].id);
@@ -102,36 +105,29 @@ int main() {
         break;
       }
       
-      if (currentPlayer->hasFolded) {
+      if (game.turn > 4) { // Last turn check
+        int winnerId = determineWinner();
+
+        for (int i = 0; i < game.numPlayers; i++) {
+          if (!game.players[i].hasFolded) {
+            printf("> Player %d has a %s. \n", game.players[i].id, rankNames[evaluatePlayerHand(&game.players[i], &game.dealer).rankValue - 1]);
+          } else {
+            printf("> Player %d folded. \n", game.players[i].id);
+          }
+        }
+
+        printf("\nPlayer %d wins the round with a %s!\n \n", winnerId, rankNames[evaluatePlayerHand(&game.players[winnerId - 1], &game.dealer).rankValue - 1]);
+        break;
+      }
+
+      if (currentPlayer->hasFolded) { // Skip folded players
         progressTurn();
         continue;
       }
 
-      if (game.turn > 4) {
-        determineWinner();
-        break;
-      }
-
-      clear_terminal();
-
-      printf("[Turn %d] Player %d's action. Chips: %d\n", game.turn, currentPlayer->id, currentPlayer->chips);
-      printf("Dealer's hand:\n");
-      printHand(game.dealer.hand, game.dealer.numCardsInHand);
-
-      printf("Your hand (%s):\n", rankNames[evaluatePlayerHand(currentPlayer, &game.dealer).rankValue - 1]);
-      printHand(currentPlayer->hand, currentPlayer->numCardsInHand);
-
-      if (game.turn == 1) {
-        printf("Choose an action: 1) Check 2) Fold 3) Bet\n");
-      } else {
-        printf("Choose an action: 1) Check 2) Fold 3) Raise\n");
-      }
-      
-      int action;
-      if (scanf("%d", &action) != 1 || action < 1 || action > 3) {
-        printf("Invalid action. Please enter 1, 2, or 3.\n");
-        continue;
-      }
+      // PLAYER ACTION + HUD
+      playerConfirmation();
+      int action = playerAction();
 
       if (action == 2) { // Fold
         currentPlayer->hasFolded = 1;
@@ -139,6 +135,8 @@ int main() {
       else if (action == 3) { // Bet or Raise
         currentPlayer->hasBet = 1;
       }
+
+      // TURN END CHECKS
 
       if (progressTurn()) {
         if (game.dealer.numCardsInHand < 5) {
@@ -227,36 +225,24 @@ int progressTurn() {
   return 0;
 }
 
-void determineWinner() {
-  int bestRankValue = 0;
-  int bestRankFace = 0;
-  int bestRankSuit = 0;
+int determineWinner() {
+  struct Rank bestRank = {0, 0, 0};
   int winnerId = 0;
 
   for (int i = 0; i < game.numPlayers; i++) {
     if (!game.players[i].hasFolded) {
       struct Rank playerRank = evaluatePlayerHand(&game.players[i], &game.dealer);
-      if (playerRank.rankValue > bestRankValue || 
-          (playerRank.rankValue == bestRankValue && playerRank.rankFace > bestRankFace) || 
-          (playerRank.rankValue == bestRankValue && playerRank.rankFace == bestRankFace && playerRank.rankSuit > bestRankSuit)) {
-        bestRankValue = playerRank.rankValue;
-        bestRankFace = playerRank.rankFace;
-        bestRankSuit = playerRank.rankSuit;
+      if (playerRank.rankValue > bestRank.rankValue || 
+          (playerRank.rankValue == bestRank.rankValue && playerRank.rankFace > bestRank.rankFace) || 
+          (playerRank.rankValue == bestRank.rankValue && playerRank.rankFace == bestRank.rankFace && playerRank.rankSuit > bestRank.rankSuit)) {
+        bestRank.rankValue = playerRank.rankValue;
+        bestRank.rankFace = playerRank.rankFace;
+        bestRank.rankSuit = playerRank.rankSuit;
         winnerId = game.players[i].id;
       }
-      printf("> Player %d has a %s\n", game.players[i].id, rankNames[playerRank.rankValue - 1]);
-    } 
-    else {
-      printf("> Player %d folded.\n", game.players[i].id);
     }
   }
-  printf("\n");
-  printf("Player %d wins the round with a %s!\n \n", winnerId, rankNames[bestRankValue - 1]);
-  for (int i = 0; i < game.numPlayers; i++) {
-    if (game.players[i].id == winnerId) {
-      game.players[i].chips += game.pot;
-    }
-  }
+  return winnerId;
 }
 
 // DECK RELATED FUNCTIONS
@@ -493,6 +479,41 @@ struct Rank evaluatePlayerHand(const struct Player *player, const struct Dealer 
 }
 
 // UTIL
+
+int playerConfirmation() {
+  char buffer[20];
+
+  clear_terminal();
+  printf("Confirm you are player %d (Any input): ", game.currentPlayer + 1);
+  scanf("%s", buffer);
+  clear_terminal();
+
+  return 0;
+}
+
+int playerAction() {
+  struct Player *currentPlayer = &game.players[game.currentPlayer]; // utility variable
+
+  printf("[Turn %d] Player %d's action. Chips: %d\n", game.turn, currentPlayer->id, currentPlayer->chips);
+  printf("Dealer's hand:\n");
+  printHand(game.dealer.hand, game.dealer.numCardsInHand);
+
+  printf("Your hand (%s):\n", rankNames[evaluatePlayerHand(currentPlayer, &game.dealer).rankValue - 1]);
+  printHand(currentPlayer->hand, currentPlayer->numCardsInHand);
+
+  if (game.turn == 1) {
+    printf("Choose an action: 1) Check 2) Fold 3) Bet\n");
+  } else {
+    printf("Choose an action: 1) Check 2) Fold 3) Raise\n");
+  }
+  
+  int action;
+  while (scanf("%d", &action) != 1 || action < 1 || action > 3) {
+    printf("Invalid action. Please enter 1, 2, or 3.\n");
+    while (getchar() != '\n'); // Clear input buffer
+  }
+  return action;
+}
 
 void printHand(struct Card hand[], int numCards) {
   const char *RED = "\x1b[31m";
