@@ -27,6 +27,10 @@ struct Player {
   int chips;
   int hasFolded;
   int hasBet;
+  // add a hasLost to prevent players with 0 or less chips from playing unless they have a lastChance
+  // add a lastChance that allows players to go all in when a bet is set higher than their pockets can pay
+  // add a toSpend that is deduzido from each turn
+  int toSpend;
 };
 
 struct Dealer { // sim eu sei que isso é so mais um jogador mas fica mais bonito assim 
@@ -128,7 +132,7 @@ int main() {
           }
         }
 
-        printf("\nPlayer %d wins the round with a %s!\n \n", game.currentWinner, rankNames[evaluatePlayerHand(&game.players[game.currentWinner - 1], &game.dealer).rankValue - 1]);
+        printf("\nPlayer %d wins the round with a %s! +%d awarded from the pot\n \n", game.currentWinner, rankNames[evaluatePlayerHand(&game.players[game.currentWinner - 1], &game.dealer).rankValue - 1], game.pot);
         break;
       }
 
@@ -148,11 +152,9 @@ int main() {
       int action = playerAction();
       if (action == 1) { // Check or call
         if (game.highestBet > 0) {
-          currentPlayer->chips -= game.highestBet;
-          game.pot += game.highestBet;
+          currentPlayer->toSpend = game.highestBet;
         } else {
-          currentPlayer->chips -= game.minBet;
-          game.pot += game.minBet;
+          currentPlayer->toSpend = game.minBet;
         }
       } 
       else if (action == 2) { // Fold
@@ -185,8 +187,7 @@ int main() {
           break;
         }
         
-        currentPlayer->chips -= betAmount;
-        game.pot += betAmount;
+        currentPlayer->toSpend = betAmount;
         game.firstToBet = currentPlayer->id;
 
         if (betAmount > game.highestBet) {
@@ -376,20 +377,27 @@ int progressRound() {
 }
 
 void progressTurn() {
-  game.currentPlayer++; // Move to the next player's turn
+  game.pot += game.players[game.currentPlayer].toSpend;
 
-  if (game.currentPlayer >= game.numPlayers) {
+  game.currentPlayer++; // Move to the next player's turn
+  
+  if (game.currentPlayer >= game.numPlayers) { // turn pass
     game.currentPlayer = 0;
     game.firstToBet = 0;
     game.highestBet = 0;
     game.turn++;
 
-    if (game.dealer.numCardsInHand < 5) {
+    if (game.dealer.numCardsInHand < 5) { // deal dealer card
       game.dealer.hand[game.dealer.numCardsInHand] = getCard();
       game.dealer.numCardsInHand++;
     }
+
     for (int i = 0; i < game.numPlayers; i++) {
-      if (game.players[i].numCardsInHand < 5) {
+      if (game.players[i].toSpend > 0) { // deduct from each turn pass
+        game.players[i].chips -= game.players[i].toSpend;
+        game.players[i].toSpend = 0;
+      }
+      if (game.players[i].numCardsInHand < 5) { // deal player cards
         game.players[i].hand[game.players[i].numCardsInHand] = getCard();
         game.players[i].numCardsInHand++;
       }
@@ -704,19 +712,27 @@ void printHand(struct Card hand[], int numCards) {
 }
 
 void printStatus() {
-  const char *BOLD = "\x1b[1;0m";
-  const char *DIM = "\x1b[2;0m";
+  const char *BET = "\x1b[0;0m";
+  const char *FOLD = "\x1b[2;37m";
+  const char *CHECK = "\x1b[0;0m";
   const char *RESET = "\x1b[0;0m";
 
   for (int i = 0; i < game.numPlayers; i++) {
-    if (game.players[i].hasFolded) {
-      printf(DIM);
-      printf("  Player %d folded.\n", game.players[i].id);
-    } else if (game.players[i].id == game.firstToBet) {
-      printf(BOLD);
-      printf("> Player %d bet %d chips!\n", game.players[i].id, game.highestBet);
+    struct Player currentPlayer = game.players[i];
+
+    int id = currentPlayer.id;
+    int chips = currentPlayer.chips - currentPlayer.toSpend;
+    int bet = game.highestBet;
+
+    if (currentPlayer.hasFolded) {
+      printf(FOLD);
+      printf("  Player %d (Chips: %d) folded.\n", id, chips);
+    } else if (id == game.firstToBet) {
+      printf(BET);
+      printf("> Player %d (Chips: %d) bet %d chips!\n", id, chips, bet);
     } else {
-      printf("  Player %d (Chips: %d)\n", game.players[i].id, game.players[i].chips);
+      printf(CHECK);
+      printf("  Player %d (Chips: %d)\n", id, chips);
     }
     printf(RESET);
   }
