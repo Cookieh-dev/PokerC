@@ -34,7 +34,6 @@ struct Dealer { // sim eu sei que isso é so mais um jogador mas fica mais bonit
   int numCardsInHand;
 };
 
-
 struct Game {
   struct Player players[5];
   struct Dealer dealer;
@@ -42,8 +41,11 @@ struct Game {
   int turn;
   int numPlayers;
   int currentPlayer;
+  int currentWinner;
+  int firstToBet;
   int pot;
   int minBet;
+  int highestBet;
 };
 
 // INITING VARIABLES
@@ -53,7 +55,7 @@ static const int MIN_PLAYERS = 2; // Do not go below 2 players
 static const int STARTING_CHIPS = 20;
 
 static const char *faceNames[] = {"Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King", "Ace"};
-static const char *suitNames[] = {"Hearts", "Diamonds", "Clubs", "Spades"};
+static const char *suitNames[] = {"Clubs", "Diamonds", "Hearts", "Spades"};
 static const char *rankNames[] = {"High Card", "One Pair", "Two Pair", "Three of a Kind", "Straight", "Flush", "Full House", "Four of a Kind", "Straight Flush", "Royal Flush"};
 
 struct Deck deck;
@@ -64,7 +66,7 @@ struct Game game;
 void initGame();
 void initRound();
 int progressRound();
-int progressTurn();
+void progressTurn();
 int determineWinner();
 
 void initDeck();
@@ -76,6 +78,7 @@ struct Rank evaluatePlayerHand(const struct Player *player, const struct Dealer 
 int playerConfirmation();
 int playerAction();
 void printHand(struct Card hand[], int numCards);
+void printStatus();
 void clear_terminal();
 
 // MAIN
@@ -96,6 +99,7 @@ int main() {
       // TURN START CHECKS
 
       int activePlayers = 0; // Active player check
+
       for (int i = 0; i < game.numPlayers; i++) {
         if (!game.players[i].hasFolded) {
           activePlayers++;
@@ -105,14 +109,16 @@ int main() {
         for (int i = 0; i < game.numPlayers; i++) {
           if (game.players[i].hasFolded) {
             printf("> Player %d folded. \n", game.players[i].id);
+          } else {
+            game.currentWinner = game.players[i].id;
           }
         }
-        printf("\n");
+        printf("\nPlayer %d wins the round\n\n", game.currentWinner);
         break;
       }
       
       if (game.turn > 4) { // Last turn check
-        int winnerId = determineWinner();
+        game.currentWinner = determineWinner();
 
         for (int i = 0; i < game.numPlayers; i++) {
           if (!game.players[i].hasFolded) {
@@ -122,7 +128,7 @@ int main() {
           }
         }
 
-        printf("\nPlayer %d wins the round with a %s!\n \n", winnerId, rankNames[evaluatePlayerHand(&game.players[winnerId - 1], &game.dealer).rankValue - 1]);
+        printf("\nPlayer %d wins the round with a %s!\n \n", game.currentWinner, rankNames[evaluatePlayerHand(&game.players[game.currentWinner - 1], &game.dealer).rankValue - 1]);
         break;
       }
 
@@ -133,35 +139,63 @@ int main() {
 
       if (currentPlayer->hasBet) { // Skip players who have already bet or raised
         progressTurn();
+        currentPlayer->hasBet = 0;
         continue;
       }
 
       // PLAYER ACTION + HUD
       // playerConfirmation();
       int action = playerAction();
-
-      if (action == 2) { // Fold
+      if (action == 1) { // Check or call
+        if (game.highestBet > 0) {
+          currentPlayer->chips -= game.highestBet;
+          game.pot += game.highestBet;
+        } else {
+          currentPlayer->chips -= game.minBet;
+          game.pot += game.minBet;
+        }
+      } 
+      else if (action == 2) { // Fold
         currentPlayer->hasFolded = 1;
       } 
       else if (action == 3) { // Bet or Raise
-        currentPlayer->hasBet = 1;
-        currentPlayer = 0;
-      }
-
-      // TURN END CHECKS
-
-      if (progressTurn()) {
-        if (game.dealer.numCardsInHand < 5) {
-          game.dealer.hand[game.dealer.numCardsInHand] = getCard();
-          game.dealer.numCardsInHand++;
-        }
         for (int i = 0; i < game.numPlayers; i++) {
-          if (game.players[i].numCardsInHand < 5) {
-            game.players[i].hand[game.players[i].numCardsInHand] = getCard();
-            game.players[i].numCardsInHand++;
+          if (!game.players[i].hasFolded) {
+            game.players[i].hasBet = 0;
           }
         }
+        currentPlayer->hasBet = 1;
+        game.currentPlayer = 0;
+        
+        int betAmount;
+        while (1) {
+          if (game.highestBet > 0) {
+            printf("Enter your raise amount (Minimum %d): ", game.highestBet + 1);
+            if (scanf("%d", &betAmount) != 1 || betAmount < game.highestBet + 1 || betAmount > currentPlayer->chips) {
+              printf("Invalid bet amount. Please enter a number between %d and %d.\n", game.highestBet + 1, currentPlayer->chips);
+              continue;
+            }
+          } else {
+            printf("Enter your bet amount (Minimum %d): ", game.minBet + 1);
+            if (scanf("%d", &betAmount) != 1 || betAmount < game.minBet + 1 || betAmount > currentPlayer->chips) {
+              printf("Invalid bet amount. Please enter a number between %d and %d.\n", game.minBet + 1, currentPlayer->chips);
+              continue;
+            }
+          }
+          break;
+        }
+        
+        currentPlayer->chips -= betAmount;
+        game.pot += betAmount;
+        game.firstToBet = currentPlayer->id;
+
+        if (betAmount > game.highestBet) {
+          game.highestBet = betAmount;
+        }
+
+        continue;
       }
+      progressTurn();
     }
     if (!progressRound()) {
       break;
@@ -179,15 +213,17 @@ void initGame() {
     printf("Invalid number of players. Please enter a number between %d and %d.\n", MIN_PLAYERS, MAX_PLAYERS);
     exit(1);
   }
-  printf("Insert the minimum bet: (Maximum %d): ", STARTING_CHIPS);
+  printf("Insert the minimum bet (Maximum %d): ", STARTING_CHIPS);
   if (scanf("%d", &game.minBet) != 1 || game.minBet < 1 || game.minBet > STARTING_CHIPS) {
     printf("Invalid minimum bet. Please enter a number between 1 and %d.\n", STARTING_CHIPS);
     exit(1);
   }
-  game.currentPlayer = 0;
+  for (int i = 0; i < game.numPlayers; i++) {
+    game.players[i].id = i + 1;
+    game.players[i].chips = STARTING_CHIPS;
+  }
   game.pot = 0;
   game.round = 1;
-  game.turn = 1;
 
   initDeck();
 }
@@ -203,21 +239,51 @@ void initRound() {
   }
 
   for (int i = 0; i < game.numPlayers; i++) {
-    game.players[i].id = i + 1;
-    game.players[i].chips = STARTING_CHIPS; // starting chips
     for (int j = 0; j < 2; j++)
       game.players[i].hand[j] = getCard();
+    game.currentPlayer = 0;
     game.players[i].numCardsInHand = 2;
     game.players[i].hasFolded = 0;
     game.players[i].hasBet = 0;
   }
 
   game.turn = 1;
+  game.highestBet = 0;
   game.currentPlayer = 0;
+  game.currentWinner = 0;
+  game.firstToBet = 0;
 }
 
 int progressRound() {
-  printf("Round %d ended.\n", game.round);
+  printf("Round %d ended\n", game.round);
+
+  game.players[game.currentWinner - 1].chips += game.pot;
+  game.pot = 0;
+
+  // REMOVE PLAYERS WHO WENT BANKRUPT
+  for (int i = 0; i < game.numPlayers; i++) {
+    if (game.players[i].chips <= 0) {
+      printf("> Player %d went bankrupt\n", game.players[i].id);
+
+      for (int j = i; j < game.numPlayers - 1; j++) {
+        game.players[j] = game.players[j + 1];
+      }
+
+      game.numPlayers--;
+      i--;
+    }
+  }
+
+  if (game.numPlayers <= 1) { // END GAME IF 1 PLAYER IS LEFT
+    return 0;
+  }
+
+  for (int i = 0; i < game.numPlayers; i++) {
+    if (game.players[i].id != i + 1) {
+       printf("> Player %d is now Player %d\n", game.players[i].id, i + 1);
+       game.players[i].id = i + 1;
+    }
+  }
 
   // CHECK IF PLAYERS WANT TO CONTINUE
   if (game.numPlayers >= MAX_PLAYERS) {
@@ -254,6 +320,10 @@ int progressRound() {
       printf("Invalid number of players. Please enter a number between 1 and %d.\n", MAX_PLAYERS - game.numPlayers);
       while (getchar() != '\n');
     }
+    for (int i = game.numPlayers; i < game.numPlayers + toAdd; ++i) {
+      game.players[i].id = i + 1;
+      game.players[i].chips = STARTING_CHIPS;
+    }
     game.numPlayers += toAdd;
 
     clear_terminal();
@@ -279,7 +349,7 @@ int progressRound() {
       }
       if (idToRemove == game.numPlayers) {
         game.numPlayers--;
-        printf("Removed Player %d.\n", idToRemove);
+        printf("> Removed Player %d.\n", idToRemove);
       } 
       else {
         for (int j = idToRemove - 1; j < game.numPlayers - 1; j++) {
@@ -305,16 +375,26 @@ int progressRound() {
   return 1;
 }
 
-int progressTurn() {
+void progressTurn() {
   game.currentPlayer++; // Move to the next player's turn
+
   if (game.currentPlayer >= game.numPlayers) {
     game.currentPlayer = 0;
+    game.firstToBet = 0;
+    game.highestBet = 0;
     game.turn++;
 
-    return 1;
+    if (game.dealer.numCardsInHand < 5) {
+      game.dealer.hand[game.dealer.numCardsInHand] = getCard();
+      game.dealer.numCardsInHand++;
+    }
+    for (int i = 0; i < game.numPlayers; i++) {
+      if (game.players[i].numCardsInHand < 5) {
+        game.players[i].hand[game.players[i].numCardsInHand] = getCard();
+        game.players[i].numCardsInHand++;
+      }
+    }
   }
-
-  return 0;
 }
 
 int determineWinner() {
@@ -587,21 +667,21 @@ int playerAction() {
   struct Player *currentPlayer = &game.players[game.currentPlayer]; // utility variable
 
   printf("[Turn %d] Player %d's action. Chips: %d\n", game.turn, currentPlayer->id, currentPlayer->chips);
+
+  printf("Game Status (Pot: %d):\n", game.pot);
+  printStatus();
+
   printf("Dealer's hand:\n");
   printHand(game.dealer.hand, game.dealer.numCardsInHand);
 
   printf("Your hand (%s):\n", rankNames[evaluatePlayerHand(currentPlayer, &game.dealer).rankValue - 1]);
   printHand(currentPlayer->hand, currentPlayer->numCardsInHand);
 
-  if (game.turn == 1) {
-    printf("Choose an action: 1) Check 2) Fold 3) Bet\n");
-  } else {
-    printf("Choose an action: 1) Check 2) Fold 3) Raise\n");
-  }
+  printf("Choose an action (1 to Check/Call 2 to Fold 3 to Bet/Raise): ");
   
   int action;
   while (scanf("%d", &action) != 1 || action < 1 || action > 3) {
-    printf("Invalid action. Please enter 1, 2, or 3.\n");
+    printf("Invalid action.\n");
     while (getchar() != '\n'); // Clear input buffer
   }
   return action;
@@ -610,15 +690,34 @@ int playerAction() {
 void printHand(struct Card hand[], int numCards) {
   const char *RED = "\x1b[31m";
   const char *BLACK = "\x1b[90m";
-  const char *RESET = "\x1b[0m";
+  const char *RESET = "\x1b[0;0m";
 
   for (int i = 0; i < numCards; i++) {
-    if (hand[i].suit == 0 || hand[i].suit == 1) {
+    if (hand[i].suit == 1 || hand[i].suit == 2) {
       printf(RED);
     } else {
       printf(BLACK);
     }
     printf("  %s of %s\n", faceNames[hand[i].face], suitNames[hand[i].suit]);
+    printf(RESET);
+  }
+}
+
+void printStatus() {
+  const char *BOLD = "\x1b[1;0m";
+  const char *DIM = "\x1b[2;0m";
+  const char *RESET = "\x1b[0;0m";
+
+  for (int i = 0; i < game.numPlayers; i++) {
+    if (game.players[i].hasFolded) {
+      printf(DIM);
+      printf("  Player %d folded.\n", game.players[i].id);
+    } else if (game.players[i].id == game.firstToBet) {
+      printf(BOLD);
+      printf("> Player %d bet %d chips!\n", game.players[i].id, game.highestBet);
+    } else {
+      printf("  Player %d (Chips: %d)\n", game.players[i].id, game.players[i].chips);
+    }
     printf(RESET);
   }
 }
