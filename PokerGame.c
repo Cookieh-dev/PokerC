@@ -27,9 +27,9 @@ struct Player {
   int chips;
   int hasFolded;
   int hasBet;
+  int hasLost;
   // add a hasLost to prevent players with 0 or less chips from playing unless they have a lastChance
   // add a lastChance that allows players to go all in when a bet is set higher than their pockets can pay
-  // add a toSpend that is deduzido from each turn
   int toSpend;
 };
 
@@ -44,6 +44,8 @@ struct Game {
   int round;
   int turn;
   int numPlayers;
+  int activePlayers;
+  int allInPlayers;
   int currentPlayer;
   int currentWinner;
   int firstToBet;
@@ -102,14 +104,7 @@ int main() {
 
       // TURN START CHECKS
 
-      int activePlayers = 0; // Active player check
-
-      for (int i = 0; i < game.numPlayers; i++) {
-        if (!game.players[i].hasFolded) {
-          activePlayers++;
-        }
-      }
-      if (activePlayers == 1) {
+      if (game.activePlayers == 1) {
         for (int i = 0; i < game.numPlayers; i++) {
           if (game.players[i].hasFolded) {
             printf("> Player %d folded. \n", game.players[i].id);
@@ -119,6 +114,22 @@ int main() {
         }
         printf("\nPlayer %d wins the round\n\n", game.currentWinner);
         break;
+      }
+
+      if (game.allInPlayers == game.activePlayers) {
+        for (int i = 4 - game.turn; i > 0; i--) {
+          if (game.dealer.numCardsInHand < 5) { // deal dealer card
+            game.dealer.hand[game.dealer.numCardsInHand] = getCard();
+            game.dealer.numCardsInHand++;
+          }
+          for (int i = 0; i < game.numPlayers; i++) {
+            if (game.players[i].numCardsInHand < 5) { // deal player cards
+              game.players[i].hand[game.players[i].numCardsInHand] = getCard();
+              game.players[i].numCardsInHand++;
+            }
+          }
+        }
+        game.turn = 5; //lazy man :/
       }
       
       if (game.turn > 4) { // Last turn check
@@ -134,6 +145,11 @@ int main() {
 
         printf("\nPlayer %d wins the round with a %s! +%d awarded from the pot\n \n", game.currentWinner, rankNames[evaluatePlayerHand(&game.players[game.currentWinner - 1], &game.dealer).rankValue - 1], game.pot);
         break;
+      }
+
+      if (currentPlayer->hasLost) {
+        progressTurn();
+        continue;
       }
 
       if (currentPlayer->hasFolded) { // Skip folded players
@@ -172,13 +188,13 @@ int main() {
         int betAmount;
         while (1) {
           if (game.highestBet > 0) {
-            printf("Enter your raise amount (Minimum %d): ", game.highestBet + 1);
+            printf("Enter your raise amount (%d-%d): ", game.highestBet + 1, currentPlayer->chips);
             if (scanf("%d", &betAmount) != 1 || betAmount < game.highestBet + 1 || betAmount > currentPlayer->chips) {
               printf("Invalid bet amount. Please enter a number between %d and %d.\n", game.highestBet + 1, currentPlayer->chips);
               continue;
             }
           } else {
-            printf("Enter your bet amount (Minimum %d): ", game.minBet + 1);
+            printf("Enter your bet amount (%d-%d): ", game.minBet + 1, currentPlayer->chips);
             if (scanf("%d", &betAmount) != 1 || betAmount < game.minBet + 1 || betAmount > currentPlayer->chips) {
               printf("Invalid bet amount. Please enter a number between %d and %d.\n", game.minBet + 1, currentPlayer->chips);
               continue;
@@ -223,7 +239,6 @@ void initGame() {
     game.players[i].id = i + 1;
     game.players[i].chips = STARTING_CHIPS;
   }
-  game.pot = 0;
   game.round = 1;
 
   initDeck();
@@ -245,13 +260,17 @@ void initRound() {
     game.currentPlayer = 0;
     game.players[i].numCardsInHand = 2;
     game.players[i].hasFolded = 0;
+    game.players[i].toSpend = 0;
     game.players[i].hasBet = 0;
   }
 
+  game.activePlayers = game.numPlayers;
   game.turn = 1;
+  game.pot = 0;
   game.highestBet = 0;
   game.currentPlayer = 0;
   game.currentWinner = 0;
+  game.allInPlayers = 0;
   game.firstToBet = 0;
 }
 
@@ -377,7 +396,14 @@ int progressRound() {
 }
 
 void progressTurn() {
-  game.pot += game.players[game.currentPlayer].toSpend;
+  game.activePlayers = 0;
+  game.allInPlayers = 0;
+
+  for (int i = 0; i < game.numPlayers; i++) {
+    if (!game.players[i].hasFolded) {
+      game.activePlayers++;
+    }
+  }
 
   game.currentPlayer++; // Move to the next player's turn
   
@@ -394,7 +420,13 @@ void progressTurn() {
 
     for (int i = 0; i < game.numPlayers; i++) {
       if (game.players[i].toSpend > 0) { // deduct from each turn pass
+        game.pot += game.players[i].toSpend;
         game.players[i].chips -= game.players[i].toSpend;
+
+        if (game.players[i].chips <= 0) {
+          game.allInPlayers++;
+        }
+
         game.players[i].toSpend = 0;
       }
       if (game.players[i].numCardsInHand < 5) { // deal player cards
@@ -715,6 +747,7 @@ void printStatus() {
   const char *BET = "\x1b[0;0m";
   const char *FOLD = "\x1b[2;37m";
   const char *CHECK = "\x1b[0;0m";
+  const char *ALLIN = "\x1b[1;91m";
   const char *RESET = "\x1b[0;0m";
 
   for (int i = 0; i < game.numPlayers; i++) {
@@ -728,8 +761,13 @@ void printStatus() {
       printf(FOLD);
       printf("  Player %d (Chips: %d) folded.\n", id, chips);
     } else if (id == game.firstToBet) {
-      printf(BET);
-      printf("> Player %d (Chips: %d) bet %d chips!\n", id, chips, bet);
+      if (chips == 0) {
+        printf(ALLIN);
+        printf("> Player %d is ALL-IN!\n", id);
+      } else {
+        printf(BET);
+        printf("> Player %d (Chips: %d) bet %d chips!\n", id, chips, bet);
+      }
     } else {
       printf(CHECK);
       printf("  Player %d (Chips: %d)\n", id, chips);
