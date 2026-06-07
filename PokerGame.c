@@ -84,6 +84,8 @@ struct Rank evaluatePlayerHand(const struct Player *player, const struct Dealer 
 
 int playerConfirmation();
 int playerAction();
+int scanInt(int min, int max, int excluded);
+int clamp(int value, int min, int max);
 void printHand(struct Card hand[], int numCards);
 void printStatus();
 void clear_terminal();
@@ -165,13 +167,13 @@ int main() {
       }
 
       // PLAYER ACTION + HUD
-      // playerConfirmation();
+
       int action = playerAction();
       if (action == 1) { // Check or call
         if (game.highestBet > 0) {
-          currentPlayer->toSpend = game.highestBet;
+          currentPlayer->toSpend = game.highestBet; clamp(currentPlayer->toSpend, 0, currentPlayer->chips);
         } else {
-          currentPlayer->toSpend = game.minBet;
+          currentPlayer->toSpend = game.minBet; clamp(currentPlayer->toSpend, 0, currentPlayer->chips);
         }
       } 
       else if (action == 2) { // Fold
@@ -190,16 +192,10 @@ int main() {
         while (1) {
           if (game.highestBet > 0) {
             printf("Enter your raise amount (%d-%d): ", game.highestBet + 1, currentPlayer->chips);
-            if (scanf("%d", &betAmount) != 1 || betAmount < game.highestBet + 1 || betAmount > currentPlayer->chips) {
-              printf("Invalid bet amount. Please enter a number between %d and %d.\n", game.highestBet + 1, currentPlayer->chips);
-              continue;
-            }
+            betAmount = scanInt(game.highestBet + 1, currentPlayer->chips, -1);
           } else {
             printf("Enter your bet amount (%d-%d): ", game.minBet + 1, currentPlayer->chips);
-            if (scanf("%d", &betAmount) != 1 || betAmount < game.minBet + 1 || betAmount > currentPlayer->chips) {
-              printf("Invalid bet amount. Please enter a number between %d and %d.\n", game.minBet + 1, currentPlayer->chips);
-              continue;
-            }
+            betAmount = scanInt(game.minBet + 1, currentPlayer->chips, -1);
           }
           break;
         }
@@ -227,15 +223,11 @@ int main() {
 
 void initGame() {
   printf("Insert the number of players (%d-%d): ", MIN_PLAYERS, MAX_PLAYERS);
-  if (scanf("%d", &game.numPlayers) != 1 || game.numPlayers < MIN_PLAYERS || game.numPlayers > MAX_PLAYERS) {
-    printf("Invalid number of players. Please enter a number between %d and %d.\n", MIN_PLAYERS, MAX_PLAYERS);
-    exit(1);
-  }
+  game.numPlayers = scanInt(MIN_PLAYERS, MAX_PLAYERS, -1);
+
   printf("Insert the minimum bet (Maximum %d): ", STARTING_CHIPS);
-  if (scanf("%d", &game.minBet) != 1 || game.minBet < 1 || game.minBet > STARTING_CHIPS) {
-    printf("Invalid minimum bet. Please enter a number between 1 and %d.\n", STARTING_CHIPS);
-    exit(1);
-  }
+  game.minBet = scanInt(1, STARTING_CHIPS, -1);
+
   for (int i = 0; i < game.numPlayers; i++) {
     game.players[i].id = i + 1;
     game.players[i].chips = STARTING_CHIPS;
@@ -305,32 +297,21 @@ int progressRound() {
   }
 
   // CHECK IF PLAYERS WANT TO CONTINUE
+  int choice;
   if (game.numPlayers >= MAX_PLAYERS) {
-    printf("Do you want to continue playing? (1 for Yes, 2 for No, 4 to Remove a player): ");
+    printf("Do you want to continue playing? (1 for Yes, 2 for No, 4 to Remove a player, 5 to Change the starting bet): ");
+    choice = scanInt(1,5,3);
   } else if (game.numPlayers <= MIN_PLAYERS) {
     if (game.numPlayers <= 1) {
-      printf("Do you want to continue playing? (2 for No, 3 to Add another player): ");
+      printf("Do you want to continue playing? (2 for No, 3 to Add another player, 5 to Change the starting bet): ");
+      choice = scanInt(2,5,4);
     } else {
-      printf("Do you want to continue playing? (1 for Yes, 2 for No, 3 to Add another player): ");
+      printf("Do you want to continue playing? (1 for Yes, 2 for No, 3 to Add another player, 5 to Change the starting bet): ");
+      choice = scanInt(1,5,4);
     }
-  } else if (game.numPlayers > MIN_PLAYERS && game.numPlayers < MAX_PLAYERS) {
-    printf("Do you want to continue playing? (1 for Yes, 2 for No, 3 to Add another player, 4 to Remove a player): ");
-  }
-
-  int choice;
-  while (scanf("%d", &choice) != 1 || choice < 1 || choice > 4 || (choice == 2 && game.numPlayers <= 1) || (choice == 3 && game.numPlayers >= MAX_PLAYERS) || (choice == 4 && game.numPlayers <= MIN_PLAYERS)) {
-    if (game.numPlayers >= MAX_PLAYERS) {
-      printf("Invalid choice. Please enter 1 for Yes or 2 for No.\n");
-    } else if (game.numPlayers <= MIN_PLAYERS) {
-      if (game.numPlayers <= 1) {
-        printf("Invalid choice. Please enter 2 for No, or 3 to Add another player.\n");
-      } else {
-        printf("Invalid choice. Please enter 1 for Yes, 2 for No, or 3 to Add another player.\n");
-      }
-    } else {
-      printf("Invalid choice. Please enter 1 for Yes, 2 for No, 3 to Add another player, or 4 to Remove a player.\n");
-    }
-    while (getchar() != '\n'); // Clear input buffer
+  } else {
+    printf("Do you want to continue playing? (1 for Yes, 2 for No, 3 to Add another player, 4 to Remove a player, 5 to Change the starting bet): ");
+    choice = scanInt(1,5,-1);
   }
 
   // HANDLE CHOICE
@@ -342,11 +323,8 @@ int progressRound() {
       return 1;
     }
     printf("How many players do you want to add? (up to %d): ", MAX_PLAYERS - game.numPlayers);
-    int toAdd;
-    while (scanf("%d", &toAdd) != 1 || toAdd < 1 || game.numPlayers + toAdd > MAX_PLAYERS) {
-      printf("Invalid number of players. Please enter a number between 1 and %d.\n", MAX_PLAYERS - game.numPlayers);
-      while (getchar() != '\n');
-    }
+    int toAdd = scanInt(1, MAX_PLAYERS - game.numPlayers, -1);
+
     for (int i = game.numPlayers; i < game.numPlayers + toAdd; ++i) {
       game.players[i].id = i + 1;
       game.players[i].chips = STARTING_CHIPS;
@@ -362,18 +340,12 @@ int progressRound() {
       return 1;
     }
     printf("How many players do you want to remove? (up to %d): ", game.numPlayers - MIN_PLAYERS);
-    int toRemove;
-    while (scanf("%d", &toRemove) != 1 || toRemove < 1 || game.numPlayers - toRemove < MIN_PLAYERS) {
-      printf("Invalid number of players. Please enter a number between 1 and %d.\n", game.numPlayers - MIN_PLAYERS);
-      while (getchar() != '\n');
-    }
+    int toRemove = scanInt(1, game.numPlayers - MIN_PLAYERS, -1);
+
     for (int i = 0; i < toRemove; i++) {
       printf("Enter the ID of player to remove (1-%d): ", game.numPlayers);
-      int idToRemove;
-      while (scanf("%d", &idToRemove) != 1 || idToRemove < 1 || idToRemove > game.numPlayers) {
-        printf("Invalid player ID. Please enter a number between 1 and %d.\n", game.numPlayers);
-        while (getchar() != '\n');
-      }
+      int idToRemove = scanInt(1, game.numPlayers, -1);
+
       if (idToRemove == game.numPlayers) {
         game.numPlayers--;
         printf("> Removed Player %d.\n", idToRemove);
@@ -394,9 +366,14 @@ int progressRound() {
     clear_terminal();
     printf("Removed %d player(s). Total players: %d\n \n", toRemove, game.numPlayers);
     return progressRound();
+  } else if (choice == 5) {
+    printf("Insert the minimum bet (Maximum %d): ", STARTING_CHIPS);
+    game.minBet = scanInt(1, STARTING_CHIPS, -1);
+    return progressRound();
   }
 
   // PROGRESS ROUND
+
   game.round++;
 
   return 1;
@@ -715,11 +692,12 @@ int playerConfirmation() {
 }
 
 int playerAction() {
+  playerConfirmation();
   struct Player *currentPlayer = &game.players[game.currentPlayer]; // utility variable
   int displayPot = 0;
   for (int i = 0; i < game.numPlayers; i++) {
     displayPot += game.players[i].toSpend;
-}
+  }
 
   printf("[Turn %d] Player %d's action. Chips: %d\n", game.turn, currentPlayer->id, currentPlayer->chips);
 
@@ -731,13 +709,24 @@ int playerAction() {
 
   printf("Your hand (%s):\n", rankNames[evaluatePlayerHand(currentPlayer, &game.dealer).rankValue - 1]);
   printHand(currentPlayer->hand, currentPlayer->numCardsInHand);
-
-  printf("Choose an action (1 to Check/Call 2 to Fold 3 to Bet/Raise): ");
   
   int action;
-  while (scanf("%d", &action) != 1 || action < 1 || action > 3) {
-    printf("Invalid action.\n");
-    while (getchar() != '\n'); // Clear input buffer
+  if (game.highestBet > 0) {
+    if (currentPlayer->chips > game.highestBet) {
+      printf("Choose your action (1 - Call [%d] 2 - Fold 3 - Raise): ", game.highestBet);
+      action = scanInt(1,3,-1);
+    } else {
+      printf("Choose your action (1 - Call [%d] 2 - Fold): ", game.highestBet);
+      action = scanInt(1,2,-1);
+    }
+  } else {
+    if (currentPlayer->chips > game.minBet) {
+      printf("Choose your action (1 - Check [%d] 2 - Fold 3 - Bet): ", game.minBet);
+      action = scanInt(1,3,-1);
+    } else {
+      printf("Choose your action (1 - Check [%d] 2 - Fold): ", game.minBet);
+      action = scanInt(1,2,-1);
+    }
   }
   return action;
 }
@@ -780,7 +769,7 @@ void printStatus() {
       printf(FOLD);
       printf("  Player %d (Chips: %d) folded.\n", id, chips);
     } else if (id == game.firstToBet) {
-      if (chips == 0) {
+      if (chips <= 0) {
         printf(ALLIN);
         printf("> Player %d is ALL-IN!\n", id);
       } else {
@@ -788,10 +777,51 @@ void printStatus() {
         printf("> Player %d (Chips: %d) bet %d chips!\n", id, chips, bet);
       }
     } else {
-      printf(CHECK);
-      printf("  Player %d (Chips: %d)\n", id, chips);
+      if (chips <= 0) {
+        printf(LOST);
+        printf("  Player %d is on their last chance.\n", id);
+      } else {
+        printf(CHECK);
+        printf("  Player %d (Chips: %d)\n", id, chips);
+      }
     }
     printf(RESET);
+  }
+}
+
+int clamp(int value, int min, int max) {
+  if (value < min)
+      return min;
+
+  if (value > max)
+      return max;
+
+  return value;
+}
+
+int scanInt(int min, int max, int excluded) {
+  fflush(stdout);
+  int value;
+
+  while (1) {
+    if (scanf("%d", &value) != 1) {
+        printf("Invalid input. Enter a number between %d and %d: ", min, max);
+        while (getchar() != '\n');
+        continue;
+    }
+
+    if (value < min || value > max || value == excluded) {
+        printf("Invalid input. Enter a number between %d and %d",min, max);
+        if (excluded >= min && excluded <= max) {
+            printf(" except %d", excluded);
+        }
+        printf(": ");
+        while (getchar() != '\n');
+        continue;
+    }
+    while (getchar() != '\n');
+
+    return value;
   }
 }
 
