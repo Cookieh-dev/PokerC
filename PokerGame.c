@@ -45,6 +45,7 @@ struct Game {
   int turn;
   int numPlayers;
   int activePlayers;
+  int lostPlayers;
   int allInPlayers;
   int currentPlayer;
   int currentWinner;
@@ -116,7 +117,7 @@ int main() {
         break;
       }
 
-      if (game.allInPlayers == game.activePlayers) {
+      if (game.allInPlayers == game.activePlayers || game.activePlayers - game.lostPlayers == 1) {
         for (int i = 4 - game.turn; i > 0; i--) {
           if (game.dealer.numCardsInHand < 5) { // deal dealer card
             game.dealer.hand[game.dealer.numCardsInHand] = getCard();
@@ -260,13 +261,15 @@ void initRound() {
     game.currentPlayer = 0;
     game.players[i].numCardsInHand = 2;
     game.players[i].hasFolded = 0;
-    game.players[i].toSpend = 0;
+    game.players[i].hasLost = 0;
     game.players[i].hasBet = 0;
+    game.players[i].toSpend = 0;
   }
 
   game.activePlayers = game.numPlayers;
   game.turn = 1;
   game.pot = 0;
+  game.lostPlayers = 0;
   game.highestBet = 0;
   game.currentPlayer = 0;
   game.currentWinner = 0;
@@ -294,10 +297,6 @@ int progressRound() {
     }
   }
 
-  if (game.numPlayers <= 1) { // END GAME IF 1 PLAYER IS LEFT
-    return 0;
-  }
-
   for (int i = 0; i < game.numPlayers; i++) {
     if (game.players[i].id != i + 1) {
        printf("> Player %d is now Player %d\n", game.players[i].id, i + 1);
@@ -309,17 +308,25 @@ int progressRound() {
   if (game.numPlayers >= MAX_PLAYERS) {
     printf("Do you want to continue playing? (1 for Yes, 2 for No, 4 to Remove a player): ");
   } else if (game.numPlayers <= MIN_PLAYERS) {
-    printf("Do you want to continue playing? (1 for Yes, 2 for No, 3 to Add another player): ");
+    if (game.numPlayers <= 1) {
+      printf("Do you want to continue playing? (2 for No, 3 to Add another player): ");
+    } else {
+      printf("Do you want to continue playing? (1 for Yes, 2 for No, 3 to Add another player): ");
+    }
   } else if (game.numPlayers > MIN_PLAYERS && game.numPlayers < MAX_PLAYERS) {
     printf("Do you want to continue playing? (1 for Yes, 2 for No, 3 to Add another player, 4 to Remove a player): ");
   }
 
   int choice;
-  while (scanf("%d", &choice) != 1 || choice < 1 || choice > 4 || (choice == 3 && game.numPlayers >= MAX_PLAYERS) || (choice == 4 && game.numPlayers <= MIN_PLAYERS)) {
+  while (scanf("%d", &choice) != 1 || choice < 1 || choice > 4 || (choice == 2 && game.numPlayers <= 1) || (choice == 3 && game.numPlayers >= MAX_PLAYERS) || (choice == 4 && game.numPlayers <= MIN_PLAYERS)) {
     if (game.numPlayers >= MAX_PLAYERS) {
       printf("Invalid choice. Please enter 1 for Yes or 2 for No.\n");
     } else if (game.numPlayers <= MIN_PLAYERS) {
-      printf("Invalid choice. Please enter 1 for Yes, 2 for No, or 3 to Add another player.\n");
+      if (game.numPlayers <= 1) {
+        printf("Invalid choice. Please enter 2 for No, or 3 to Add another player.\n");
+      } else {
+        printf("Invalid choice. Please enter 1 for Yes, 2 for No, or 3 to Add another player.\n");
+      }
     } else {
       printf("Invalid choice. Please enter 1 for Yes, 2 for No, 3 to Add another player, or 4 to Remove a player.\n");
     }
@@ -428,6 +435,10 @@ void progressTurn() {
         }
 
         game.players[i].toSpend = 0;
+      }
+      if (game.players[i].chips <= 0) {
+        game.players[i].hasLost = 1;
+        game.lostPlayers++;
       }
       if (game.players[i].numCardsInHand < 5) { // deal player cards
         game.players[i].hand[game.players[i].numCardsInHand] = getCard();
@@ -705,10 +716,14 @@ int playerConfirmation() {
 
 int playerAction() {
   struct Player *currentPlayer = &game.players[game.currentPlayer]; // utility variable
+  int displayPot = 0;
+  for (int i = 0; i < game.numPlayers; i++) {
+    displayPot += game.players[i].toSpend;
+}
 
   printf("[Turn %d] Player %d's action. Chips: %d\n", game.turn, currentPlayer->id, currentPlayer->chips);
 
-  printf("Game Status (Pot: %d):\n", game.pot);
+  printf("Game Status (Pot: %d):\n", game.pot + displayPot);
   printStatus();
 
   printf("Dealer's hand:\n");
@@ -746,6 +761,7 @@ void printHand(struct Card hand[], int numCards) {
 void printStatus() {
   const char *BET = "\x1b[0;0m";
   const char *FOLD = "\x1b[2;37m";
+  const char *LOST = "\x1b[2;37m";
   const char *CHECK = "\x1b[0;0m";
   const char *ALLIN = "\x1b[1;91m";
   const char *RESET = "\x1b[0;0m";
@@ -757,7 +773,10 @@ void printStatus() {
     int chips = currentPlayer.chips - currentPlayer.toSpend;
     int bet = game.highestBet;
 
-    if (currentPlayer.hasFolded) {
+    if (currentPlayer.hasLost){
+      printf(LOST);
+      printf("  Player %d is on their last chance.\n", id);
+    } else if (currentPlayer.hasFolded) {
       printf(FOLD);
       printf("  Player %d (Chips: %d) folded.\n", id, chips);
     } else if (id == game.firstToBet) {
