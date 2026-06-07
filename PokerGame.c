@@ -28,8 +28,6 @@ struct Player {
   int hasFolded;
   int hasBet;
   int hasLost;
-  // add a hasLost to prevent players with 0 or less chips from playing unless they have a lastChance
-  // add a lastChance that allows players to go all in when a bet is set higher than their pockets can pay
   int toSpend;
 };
 
