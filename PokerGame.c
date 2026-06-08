@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <time.h>
 
 // ASSIGNING VARIABLES
@@ -10,44 +11,44 @@ struct Card {
 };
 
 struct Rank {
-  int rankValue;
-  int rankFace;
-  int rankSuit;
+  signed char rankValue;
+  signed char rankFace;
+  signed char rankSuit;
 };
 
 struct Deck {
   struct Card dealtCards[52];
-  int numCardsDealt;
+  unsigned char numCardsDealt;
 };
 
 struct Player {
   struct Card hand[5];
-  int numCardsInHand;
-  int id;
+  unsigned char numCardsInHand;
+  unsigned char id;
   int chips;
-  int hasFolded;
-  int hasBet;
-  int hasLost;
   int toSpend;
+  bool hasFolded;
+  bool hasBet;
+  bool hasLost;
 };
 
 struct Dealer { // sim eu sei que isso é so mais um jogador mas fica mais bonito assim 
   struct Card hand[5];
-  int numCardsInHand;
+  unsigned char numCardsInHand;
 };
 
 struct Game {
   struct Player players[5];
   struct Dealer dealer;
   int round;
-  int turn;
-  int numPlayers;
-  int activePlayers;
-  int lostPlayers;
-  int allInPlayers;
-  int currentPlayer;
-  int currentWinner;
-  int firstToBet;
+  unsigned char turn;
+  unsigned char numPlayers;
+  unsigned char activePlayers;
+  unsigned char lostPlayers;
+  unsigned char allInPlayers;
+  unsigned char currentPlayer;
+  unsigned char currentWinner;
+  unsigned char firstToBet;
   int pot;
   int minBet;
   int highestBet;
@@ -55,9 +56,9 @@ struct Game {
 
 // INITING VARIABLES
 
-static const int MAX_PLAYERS = 5; // Do not go above 5 players
-static const int MIN_PLAYERS = 2; // Do not go below 2 players
-static const int STARTING_CHIPS = 20;
+static const unsigned char MAX_PLAYERS = 5; // Do not go above 5 players
+static const unsigned char MIN_PLAYERS = 2; // Do not go below 2 players
+static const int STARTING_CHIPS = 1000;
 
 static const char *faceNames[] = {"Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King", "Ace"};
 static const char *suitNames[] = {"Clubs", "Diamonds", "Hearts", "Spades"};
@@ -160,7 +161,7 @@ int main() {
 
       if (currentPlayer->hasBet) { // Skip players who have already bet or raised
         progressTurn();
-        currentPlayer->hasBet = 0;
+        currentPlayer->hasBet = false;
         continue;
       }
 
@@ -175,15 +176,15 @@ int main() {
         }
       } 
       else if (action == 2) { // Fold
-        currentPlayer->hasFolded = 1;
+        currentPlayer->hasFolded = true;
       } 
       else if (action == 3) { // Bet or Raise
         for (int i = 0; i < game.numPlayers; i++) {
           if (!game.players[i].hasFolded) {
-            game.players[i].hasBet = 0;
+            game.players[i].hasBet = false;
           }
         }
-        currentPlayer->hasBet = 1;
+        currentPlayer->hasBet = true;
         game.currentPlayer = 0;
         
         int betAmount;
@@ -250,9 +251,9 @@ void initRound() {
       game.players[i].hand[j] = getCard();
     game.currentPlayer = 0;
     game.players[i].numCardsInHand = 2;
-    game.players[i].hasFolded = 0;
-    game.players[i].hasLost = 0;
-    game.players[i].hasBet = 0;
+    game.players[i].hasFolded = false;
+    game.players[i].hasLost = false;
+    game.players[i].hasBet = false;
     game.players[i].toSpend = 0;
   }
 
@@ -412,7 +413,7 @@ void progressTurn() {
         game.players[i].toSpend = 0;
       }
       if (game.players[i].chips <= 0) {
-        game.players[i].hasLost = 1;
+        game.players[i].hasLost = true;
         game.lostPlayers++;
       }
       if (game.players[i].numCardsInHand < 5) { // deal player cards
@@ -485,14 +486,14 @@ struct Rank getHandRank(struct Card hand[], int numCards) {
   int suitFaceCounts[4][13] = {{0}};
 
   for (int i = 0; i < numCards; i++) {
-    int face = (int)hand[i].face;
-    int suit = (int)hand[i].suit;
+    int face = hand[i].face;
+    int suit = hand[i].suit;
     handFaceCounts[face]++;
     handSuitCounts[suit]++;
     suitFaceCounts[suit][face]++;
   }
 
-  int isFlush = 0;
+  bool isFlush = false;
   int flushSuit = -1;
   int flushHighFace = -1;
   for (int i = 0; i < 4; i++) {
@@ -519,7 +520,7 @@ struct Rank getHandRank(struct Card hand[], int numCards) {
     }
   }
 
-  int isStraight = 0;
+  bool isStraight = false;
   int straightHighFace = -1;
   for (int i = 0; i <= 8; i++) {
     if (handFaceCounts[i] > 0 && handFaceCounts[i + 1] > 0 && handFaceCounts[i + 2] > 0 && handFaceCounts[i + 3] > 0 && handFaceCounts[i + 4] > 0) {
@@ -533,7 +534,7 @@ struct Rank getHandRank(struct Card hand[], int numCards) {
     straightHighFace = 3; // A-2-3-4-5 wheel straight
   }
 
-  int isStraightFlush = 0;
+  bool isStraightFlush = false;
   int straightFlushSuit = -1;
   int straightFlushHighFace = -1;
   for (int i = 0; i < 4; i++) {
@@ -746,7 +747,7 @@ void printHand(struct Card hand[], int numCards) {
 }
 
 void printStatus() {
-  const char *BET = "\x1b[0;0m";
+  const char *BET = "\x1b[0;91m";
   const char *FOLD = "\x1b[2;37m";
   const char *LOST = "\x1b[2;37m";
   const char *CHECK = "\x1b[0;0m";
