@@ -57,7 +57,7 @@ struct Game {
 
 static const int MAX_PLAYERS = 5; // Do not go above 5 players
 static const int MIN_PLAYERS = 2; // Do not go below 2 players
-static const int STARTING_CHIPS = 20;
+static const int STARTING_CHIPS = 1000;
 
 static const char *faceNames[] = {"Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King", "Ace"};
 static const char *suitNames[] = {"Clubs", "Diamonds", "Hearts", "Spades"};
@@ -240,11 +240,6 @@ void initRound() {
   struct Dealer dealer = {0};
   game.dealer = dealer;
 
-  game.dealer.numCardsInHand = 3;
-  for (int i = 0; i < game.dealer.numCardsInHand; i++) {
-    game.dealer.hand[i] = getCard();
-  }
-
   for (int i = 0; i < game.numPlayers; i++) {
     for (int j = 0; j < 2; j++)
       game.players[i].hand[j] = getCard();
@@ -395,9 +390,16 @@ void progressTurn() {
     game.highestBet = 0;
     game.turn++;
 
-    if (game.dealer.numCardsInHand < 5) { // deal dealer card
-      game.dealer.hand[game.dealer.numCardsInHand] = getCard();
-      game.dealer.numCardsInHand++;
+    if (game.turn > 2) {
+      if (game.dealer.numCardsInHand < 5) { // deal dealer card
+        game.dealer.hand[game.dealer.numCardsInHand] = getCard();
+        game.dealer.numCardsInHand++;
+      }
+    } else if (game.turn > 1) {
+      game.dealer.numCardsInHand = 3;
+      for (int i = 0; i < game.dealer.numCardsInHand; i++) {
+        game.dealer.hand[i] = getCard();
+      }
     }
 
     for (int i = 0; i < game.numPlayers; i++) {
@@ -414,10 +416,6 @@ void progressTurn() {
       if (game.players[i].chips <= 0) {
         game.players[i].hasLost = 1;
         game.lostPlayers++;
-      }
-      if (game.players[i].numCardsInHand < 5) { // deal player cards
-        game.players[i].hand[game.players[i].numCardsInHand] = getCard();
-        game.players[i].numCardsInHand++;
       }
     }
   }
@@ -691,6 +689,10 @@ int playerConfirmation() {
 
 int playerAction() {
   playerConfirmation();
+
+  const char *NOCARDS = "\x1b[0;90m";
+  const char *RESET = "\x1b[0;0m";
+
   struct Player *currentPlayer = &game.players[game.currentPlayer]; // utility variable
   int displayPot = 0;
   for (int i = 0; i < game.numPlayers; i++) {
@@ -703,7 +705,13 @@ int playerAction() {
   printStatus();
 
   printf("Dealer's hand:\n");
-  printHand(game.dealer.hand, game.dealer.numCardsInHand);
+  if (game.dealer.numCardsInHand <= 0) {
+    printf(NOCARDS);
+    printf("  Waiting for checking turn.\n");
+    printf(RESET);
+  } else {
+    printHand(game.dealer.hand, game.dealer.numCardsInHand);
+  }
 
   printf("Your hand (%s):\n", rankNames[evaluatePlayerHand(currentPlayer, &game.dealer).rankValue - 1]);
   printHand(currentPlayer->hand, currentPlayer->numCardsInHand);
