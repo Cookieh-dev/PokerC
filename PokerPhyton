@@ -1,0 +1,215 @@
+import os
+import random
+import sys
+from dataclasses import dataclass, field
+from typing import List
+
+# --- CONSTANTES ---
+MAX_PLAYERS = 5
+MIN_PLAYERS = 2
+STARTING_CHIPS = 1000
+
+FACE_NAMES = ["Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King", "Ace"]
+SUIT_NAMES = ["Clubs", "Diamonds", "Hearts", "Spades"]
+RANK_NAMES = ["High Card", "One Pair", "Two Pair", "Three of a Kind", "Straight", "Flush", "Full House", "Four of a Kind", "Straight Flush", "Royal Flush"]
+
+# --- CLASSES (ESTRUTURAS) ---
+
+@dataclass
+class Card:
+    face: int
+    suit: int
+
+@dataclass
+class Rank:
+    rank_value: int = 0
+    rank_face: int = 0
+    rank_suit: int = 0
+
+@dataclass
+class Player:
+    id: int
+    chips: int = STARTING_CHIPS
+    hand: List[Card] = field(default_factory=list)
+    to_spend: int = 0
+    has_folded: bool = False
+    has_bet: bool = False
+    has_lost: bool = False
+
+    @property
+    def num_cards_in_hand(self):
+        return len(self.hand)
+
+@dataclass
+class Dealer:
+    hand: List[Card] = field(default_factory=list)
+
+    @property
+    def num_cards_in_hand(self):
+        return len(self.hand)
+
+class Deck:
+    def __init__(self):
+        self.cards: List[Card] = []
+        self.init_deck()
+
+    def init_deck(self):
+        self.cards = [Card(face, suit) for suit in range(4) for face in range(13)]
+
+    def shuffle_deck(self):
+        self.init_deck()
+        random.shuffle(self.cards)
+
+    def get_card(self) -> Card:
+        if not self.cards:
+            print("Deck is empty", file=sys.stderr)
+            sys.exit(1)
+        return self.cards.pop(0)
+
+class Game:
+    def __init__(self):
+        self.players: List[Player] = []
+        self.dealer = Dealer()
+        self.round_num = 1
+        self.turn = 1
+        self.num_players = 0
+        self.active_players = 0
+        self.lost_players = 0
+        self.all_in_players = 0
+        self.current_player_idx = 0
+        self.current_winner = 0
+        self.first_to_bet = 0
+        self.pot = 0
+        self.min_bet = 0
+        self.highest_bet = 0
+
+# --- INSTÂNCIAS GLOBAIS ---
+deck = Deck()
+game = Game()
+
+# --- FUNÇÕES DE UTILIDADE ---
+
+def clear_terminal():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def clamp(value, min_val, max_val):
+    return max(min_val, min(value, max_val))
+
+def scan_int(min_val, max_val, excluded):
+    while True:
+        try:
+            value = int(input().strip())
+            if value < min_val or value > max_val or value == excluded:
+                raise ValueError
+            return value
+        except ValueError:
+            msg = f"Invalid input. Enter a number between {min_val} and {max_val}"
+            if min_val <= excluded <= max_val:
+                msg += f" except {excluded}"
+            print(f"{msg}: ", end="", flush=True)
+
+def player_confirmation():
+    clear_terminal()
+    input(f"Confirm you are player {game.players[game.current_player_idx].id} (Any input + Enter): ")
+    clear_terminal()
+
+def print_hand(hand: List[Card]):
+    RED = "\x1b[31m"
+    BLACK = "\x1b[90m"
+    RESET = "\x1b[0;0m"
+    
+    for card in hand:
+        color = RED if card.suit in [1, 2] else BLACK
+        print(f"{color}  {FACE_NAMES[card.face]} of {SUIT_NAMES[card.suit]}{RESET}")
+
+def print_status():
+    BET = "\x1b[0;91m"
+    FOLD = "\x1b[2;37m"
+    LOST = "\x1b[2;37m"
+    CHECK = "\x1b[0;0m"
+    ALLIN = "\x1b[1;91m"
+    RESET = "\x1b[0;0m"
+
+    for p in game.players:
+        chips = p.chips - p.to_spend
+        if p.has_lost:
+            print(f"{LOST}  Player {p.id} is on their last chance.{RESET}")
+        elif p.has_folded:
+            print(f"{FOLD}  Player {p.id} (Chips: {chips}) folded.{RESET}")
+        elif p.id == game.first_to_bet:
+            if chips <= 0:
+                print(f"{ALLIN}> Player {p.id} is ALL-IN!{RESET}")
+            else:
+                print(f"{BET}> Player {p.id} (Chips: {chips}) bet {game.highest_bet} chips!{RESET}")
+        else:
+            if chips <= 0:
+                print(f"{LOST}  Player {p.id} is on their last chance.{RESET}")
+            else:
+                print(f"{CHECK}  Player {p.id} (Chips: {chips}){RESET}")
+
+# --- LÓGICA DE JOGO ---
+
+def init_game():
+    print(f"Insert the number of players ({MIN_PLAYERS}-{MAX_PLAYERS}): ", end="")
+    game.num_players = scan_int(MIN_PLAYERS, MAX_PLAYERS, -1)
+
+    print(f"Insert the minimum bet (Maximum {STARTING_CHIPS}): ", end="")
+    game.min_bet = scan_int(1, STARTING_CHIPS, -1)
+
+    game.players = [Player(id=i + 1) for i in range(game.num_players)]
+    game.round_num = 1
+    deck.shuffle_deck()
+
+def init_round():
+    deck.shuffle_deck()
+    game.dealer = Dealer()
+
+    for p in game.players:
+        p.hand = [deck.get_card(), deck.get_card()]
+        p.has_folded = False
+        p.has_lost = False
+        p.has_bet = False
+        p.to_spend = 0
+
+    game.current_player_idx = 0
+    game.active_players = len(game.players)
+    game.turn = 1
+    game.pot = 0
+    game.lost_players = 0
+    game.highest_bet = 0
+    game.current_winner = 0
+    game.all_in_players = 0
+    game.first_to_bet = 0
+
+def progress_turn():
+    game.active_players = sum(1 for p in game.players if not p.has_folded)
+    game.all_in_players = 0
+
+    game.current_player_idx += 1
+    
+    if game.current_player_idx >= len(game.players):
+        game.current_player_idx = 0
+        game.first_to_bet = 0
+        game.highest_bet = 0
+        game.turn += 1
+
+        if game.turn > 2:
+            if len(game.dealer.hand) < 5:
+                game.dealer.hand.append(deck.get_card())
+        elif game.turn > 1:
+            game.dealer.hand = [deck.get_card() for _ in range(3)]
+
+        for p in game.players:
+            if p.to_spend > 0:
+                game.pot += p.to_spend
+                p.chips -= p.to_spend
+                if p.chips <= 0:
+                    game.all_in_players += 1
+                p.to_spend = 0
+            if p.chips <= 0:
+                p.has_lost = True
+                game.lost_players += 1
+
+def player_action():
+    player_confirmation()
+    NOCARDS = "\x1b
